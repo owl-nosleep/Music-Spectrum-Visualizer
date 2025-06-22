@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Equalizer (with output function)</title>
+    <style>
+        body {
+            background-color: #1a1a2e;
+            color: #e0e0ff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #container {
+            background-color: #1f1f3a;
+            padding: 1.5rem 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center;
+            width: 1024px;
+            max-width: 95vw;
+        }
+        h1 {
+            margin-top: 0;
+            margin-bottom: 1rem;
+            color: #fff;
+            font-weight: 300;
+        }
+        canvas {
+            background-color: #101020;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+        }
+        #progress-container {
+            width: 100%;
+            margin-top: 0.5rem;
+            background-color: #101020;
+            border-radius: 5px;
+            cursor: pointer;
+            padding: 2px;
+        }
+        #progress-bar {
+            width: 0%;
+            height: 10px;
+            background-color: #4a90e2;
+            border-radius: 5px;
+        }
+        #time-display {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+            padding: 0 5px;
+            box-sizing: border-box;
+        }
+        #freq-labels-panel {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            font-size: 0.7rem;
+            color: #8888aa;
+            padding: 0 5px;
+            box-sizing: border-box;
+            margin-top: 4px;
+        }
+        #preset-panel {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        input[type="file"], .btn {
+            font-size: 14px;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            border: 1px solid #44446a;
+            background-color: #33335a;
+            color: #e0e0ff;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .btn:hover {
+            background-color: #4a4a6a;
+        }
+        .btn:disabled {
+            background-color: #2a2a4a;
+            color: #8888aa;
+            cursor: not-allowed;
+        }
+        #info-grid {
+            margin-top: 1rem;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem 1rem;
+            text-align: left;
+            font-size: 1rem;
+            color: #c0c0ff;
+        }
+        .info-item span:first-child {
+            font-weight: bold;
+            color: #fff;
+        }
+        #main-controls {
+            margin-top: 1rem;
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>音樂頻譜分析儀（with Equalizer）</h1>
+        <canvas id="visualizerCanvas" width="1024" height="400"></canvas>
+        <div id="freq-labels-panel"></div>
+        <div id="progress-container">
+            <div id="progress-bar"></div>
+        </div>
+        <div id="time-display">
+            <span id="current-time">0:00</span>
+            <span id="total-time">0:00</span>
+        </div>
+        <div id="preset-panel">
+            <button class="btn preset-btn" data-preset="rock">搖滾</button>
+            <button class="btn preset-btn" data-preset="pop">流行</button>
+            <button class="btn preset-btn" data-preset="jazz">爵士</button>
+            <button class="btn preset-btn" data-preset="vocal">人聲</button>
+            <button class="btn preset-btn" data-preset="lofi">Lofi</button>
+            <button class="btn preset-btn" data-preset="reset">重設</button>
+            <button class="btn" id="export-audio-btn">導出音檔</button>
+        </div>
+        <div id="info-grid">
+            <div class="info-item" id="peak-freq-info"><span>峰值頻率:</span> <span>N/A</span></div>
+            <div class="info-item" id="rms-info"><span>平均音量 (RMS):</span> <span>N/A</span></div>
+            <div class="info-item" id="bpm-info"><span>節拍 (BPM):</span> <span>N/A</span></div>
+            <div class="info-item" id="centroid-info"><span>頻譜質心 (亮度):</span> <span>N/A</span></div>
+        </div>
+        <div id="main-controls">
+            <button class="btn" id="play-pause-btn">播放</button>
+            <input type="file" id="fileInput" accept=".wav,.mp3,.ogg">
+        </div>
+    </div>
+
+    <script>
+        // DOM 元素
+        const fileInput = document.getElementById('fileInput');
+        const canvas = document.getElementById('visualizerCanvas');
+        const progressBar = document.getElementById('progress-bar');
+        const progressContainer = document.getElementById('progress-container');
+        const currentTimeEl = document.getElementById('current-time');
+        const totalTimeEl = document.getElementById('total-time');
+        const peakFreqInfo = document.getElementById('peak-freq-info').children[1];
+        const rmsInfo = document.getElementById('rms-info').children[1];
+        const bpmInfo = document.getElementById('bpm-info').children[1];
+        const centroidInfo = document.getElementById('centroid-info').children[1];
+        const presetButtons = document.querySelectorAll('.preset-btn');
+        const exportAudioBtn = document.getElementById('export-audio-btn');
+        const playPauseBtn = document.getElementById('play-pause-btn');
+        const freqLabelsPanel = document.getElementById('freq-labels-panel');
+        const ctx = canvas.getContext('2d');
+
+        // 音訊與視覺化狀態
+        const NUM_BARS = 100;
+        let audioContext;
+        let sourceNode;
+        let analyserNode;
+        let audioBuffer;
+        let eqNodes = [];
+        const EQ_FREQUENCIES = [31, 44, 62, 87, 125, 175, 250, 350, 500, 700, 1000, 1400, 2000, 2800, 4000, 5600, 8000, 11200, 16000, 20000];
+        let isPlaying = false;
+        let mouseIsDown = false;
+        let startTime = 0;
+        let startOffset = 0;
+
+        // 分析用變數
+        let freqData;
+        let timeDomainData;
+        let beatHistory = [], lastBeatTime = 0, previousBassEnergy = 0;
+        const BEAT_THRESHOLD = 1.15, BEAT_COOLDOWN = 0.2;
+        
+        // **更新 EQ 風格預設值**
+        const eqPresets = {
+            rock: [6, 5, 4, 3, 1, -1, -2, -2, -1, 0, 1, 2, 4, 5, 6, 7, 6, 5, 4, 3],
+            pop: [4, 3, 2, 0, -1, -2, -1, 0, 1, 2, 3, 4, 3, 2, 3, 4, 3, 2, 1, 0],
+            jazz: [-2, -1, 0, 1, 2, 3, 3, 2, 1, 1, 0, -1, -1, -2, -3, -4, -5, -6, -7, -8],
+            vocal: [-6, -4, -2, -1, 0, 1, 2, 3, 4, 5, 6, 5, 4, 2, 1, 0, -1, -2, -3, -4],
+            lofi: [4, 5, 4, 2, 1, 0, -2, -3, -5, -7, -9, -11, -13, -15, -17, -18, -19, -20, -20, -20],
+            reset: new Array(20).fill(0)
+        };
+
+        // --- 事件監聽 ---
+        fileInput.addEventListener('change', handleFileSelect);
+        playPauseBtn.addEventListener('click', togglePlayback);
+        canvas.addEventListener('mousedown', () => { mouseIsDown = true; });
+        canvas.addEventListener('mouseup', () => { mouseIsDown = false; });
+        canvas.addEventListener('mousemove', handleMouseMove);
+        canvas.addEventListener('mouseleave', () => { mouseIsDown = false; });
+        progressContainer.addEventListener('click', handleSeek);
+        presetButtons.forEach(b => b.addEventListener('click', () => applyPreset(b.dataset.preset)));
+        exportAudioBtn.addEventListener('click', exportProcessedAudio);
+        
+        setupFrequencyLabels();
+
+        function handleFileSelect(event) {
+            stopPlayback();
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioContext.state === 'suspended') audioContext.resume();
+                audioContext.decodeAudioData(e.target.result, (buffer) => {
+                    audioBuffer = buffer;
+                    startOffset = 0;
+                    setupAndPlay();
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function stopPlayback() {
+            if (sourceNode) {
+                sourceNode.onended = null;
+                sourceNode.stop();
+                sourceNode.disconnect();
+                sourceNode = null;
+            }
+            isPlaying = false;
+            playPauseBtn.textContent = "播放";
+        }
+
+        function setupAndPlay(offset = 0) {
+            stopPlayback();
+            
+            sourceNode = audioContext.createBufferSource();
+            sourceNode.buffer = audioBuffer;
+            sourceNode.onended = () => {
+                if (isPlaying) {
+                   stopPlayback();
+                   progressBar.style.width = '0%';
+                   currentTimeEl.textContent = '0:00';
+                }
+            };
+            
+            analyserNode = audioContext.createAnalyser();
+            analyserNode.fftSize = 4096;
+            analyserNode.smoothingTimeConstant = 0.8;
+
+            freqData = new Uint8Array(analyserNode.frequencyBinCount);
+            timeDomainData = new Uint8Array(analyserNode.fftSize);
+
+            let lastNode = sourceNode;
+            eqNodes = EQ_FREQUENCIES.map(freq => {
+                const eq = audioContext.createBiquadFilter();
+                eq.type = 'peaking';
+                eq.frequency.value = freq;
+                eq.Q.value = 1.8;
+                eq.gain.value = 0;
+                lastNode.connect(eq);
+                lastNode = eq;
+                return eq;
+            });
+
+            lastNode.connect(analyserNode);
+            analyserNode.connect(audioContext.destination);
+
+            startOffset = offset;
+            startTime = audioContext.currentTime;
+            sourceNode.start(0, startOffset);
+            isPlaying = true;
+            playPauseBtn.textContent = "暫停";
+            
+            totalTimeEl.textContent = formatTime(audioBuffer.duration);
+            lastBeatTime = audioContext.currentTime;
+            beatHistory = [];
+            previousBassEnergy = 0;
+
+            renderFrame();
+        }
+
+        function togglePlayback() {
+            if (!audioContext || !audioBuffer) return;
+            if (isPlaying && audioContext.state === 'running') {
+                audioContext.suspend().then(() => {
+                    startOffset += audioContext.currentTime - startTime;
+                    playPauseBtn.textContent = "播放";
+                });
+            } else if (isPlaying && audioContext.state === 'suspended') {
+                audioContext.resume().then(() => {
+                    startTime = audioContext.currentTime;
+                    playPauseBtn.textContent = "暫停";
+                });
+            } else if (!isPlaying) {
+                setupAndPlay(startOffset);
+            }
+        }
+        
+        function applyPreset(presetName) {
+            if (!eqPresets[presetName]) return;
+            eqPresets[presetName].forEach((gain, index) => {
+                if (eqNodes[index]) eqNodes[index].gain.setTargetAtTime(gain, audioContext ? audioContext.currentTime : 0, 0.1);
+            });
+        }
+
+        function handleMouseMove(event) {
+            if (!mouseIsDown || !isPlaying) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            const eqIndex = Math.floor(x / (canvas.width / eqNodes.length));
+
+            if (eqIndex >= 0 && eqIndex < eqNodes.length) {
+                const gain = (1 - (y / canvas.height)) * 40 - 20;
+                eqNodes[eqIndex].gain.setTargetAtTime(gain, audioContext.currentTime, 0.01);
+            }
+        }
+
+        function handleSeek(event) {
+            if (!audioBuffer) return;
+            const rect = progressContainer.getBoundingClientRect();
+            const clickX = event.clientX - rect.left;
+            const percentage = clickX / rect.width;
+            const seekTime = percentage * audioBuffer.duration;
+            setupAndPlay(seekTime);
+        }
+
+        async function exportProcessedAudio() {
+            if (!audioBuffer) {
+                alert("請先載入音檔。");
+                return;
+            }
+
+            exportAudioBtn.disabled = true;
+            exportAudioBtn.textContent = "正在處理中...";
+
+            const offlineCtx = new OfflineAudioContext(
+                audioBuffer.numberOfChannels,
+                audioBuffer.length,
+                audioBuffer.sampleRate
+            );
+
+            const offlineSource = offlineCtx.createBufferSource();
+            offlineSource.buffer = audioBuffer;
+
+            let lastNode = offlineSource;
+            const offlineEqNodes = eqNodes.map(realNode => {
+                const offlineEq = offlineCtx.createBiquadFilter();
+                offlineEq.type = realNode.type;
+                offlineEq.frequency.value = realNode.frequency.value;
+                offlineEq.Q.value = realNode.Q.value;
+                offlineEq.gain.value = realNode.gain.value;
+                lastNode.connect(offlineEq);
+                lastNode = offlineEq;
+                return offlineEq;
+            });
+
+            lastNode.connect(offlineCtx.destination);
+            offlineSource.start(0);
+
+            try {
+                const renderedBuffer = await offlineCtx.startRendering();
+                const wavBlob = bufferToWav(renderedBuffer);
+                const url = URL.createObjectURL(wavBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'processed_audio.wav';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error("導出時發生錯誤:", error);
+                alert("導出失敗，請查看控制台錯誤訊息。");
+            } finally {
+                exportAudioBtn.disabled = false;
+                exportAudioBtn.textContent = "導出音檔";
+            }
+        }
+
+        function bufferToWav(buffer) {
+            const numOfChan = buffer.numberOfChannels;
+            const length = buffer.length * numOfChan * 2 + 44;
+            const bufferWav = new ArrayBuffer(length);
+            const view = new DataView(bufferWav);
+            const channels = [];
+            let i, sample;
+            let offset = 0;
+            let pos = 0;
+
+            // 寫入 WAV Header
+            setUint32(0x46464952); // "RIFF"
+            setUint32(length - 8); // file length - 8
+            setUint32(0x45564157); // "WAVE"
+            setUint32(0x20746d66); // "fmt " chunk
+            setUint32(16); // length of fmt chunk
+            setUint16(1); // PCM
+            setUint16(numOfChan);
+            setUint32(buffer.sampleRate);
+            setUint32(buffer.sampleRate * 2 * numOfChan); // byte rate
+            setUint16(numOfChan * 2); // block align
+            setUint16(16); // 16-bit
+            setUint32(0x61746164); // "data" - chunk
+            setUint32(length - pos - 4); // data length
+
+            function setUint16(data) {
+                view.setUint16(pos, data, true);
+                pos += 2;
+            }
+            function setUint32(data) {
+                view.setUint32(pos, data, true);
+                pos += 4;
+            }
+
+            for (i = 0; i < numOfChan; i++) {
+                channels.push(buffer.getChannelData(i));
+            }
+
+            while (pos < length) {
+                for (i = 0; i < numOfChan; i++) {
+                    sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    view.setInt16(pos, sample, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+            return new Blob([view], { type: 'audio/wav' });
+        }
+        
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+        }
+
+        function setupFrequencyLabels() {
+            freqLabelsPanel.innerHTML = '';
+            const labelIndices = [0, 4, 9, 14, 19]; 
+            labelIndices.forEach((item, index) => {
+                const freq = EQ_FREQUENCIES[item];
+                const label = document.createElement('span');
+                label.textContent = freq < 1000 ? `${freq}Hz` : `${(freq/1000).toFixed(0)}kHz`;
+                label.style.flex = '1';
+                label.style.textAlign = 'center';
+                if(index > 0) label.style.transform = `translateX(-${50 / (labelIndices.length-1) * index }%)`;
+                freqLabelsPanel.appendChild(label);
+            });
+        }
+
+        function renderFrame() {
+            if (!isPlaying && (!audioContext || audioContext.state !== 'suspended')) return;
+            requestAnimationFrame(renderFrame);
+            
+            let elapsedTime = startOffset;
+            if (audioContext && audioContext.state === 'running') {
+                elapsedTime += audioContext.currentTime - startTime;
+            }
+            if(audioBuffer) {
+               progressBar.style.width = `${(elapsedTime / audioBuffer.duration) * 100}%`;
+               currentTimeEl.textContent = formatTime(elapsedTime);
+            }
+            
+            analyserNode.getByteFrequencyData(freqData);
+            analyserNode.getByteTimeDomainData(timeDomainData);
+
+            calculateRMS();
+            calculateSpectralCentroid();
+            calculateBPM();
+            const maxIndex = freqData.indexOf(Math.max(...freqData));
+            const peakFrequency = maxIndex * (audioContext.sampleRate / analyserNode.fftSize);
+            peakFreqInfo.textContent = `${Math.round(peakFrequency)} Hz`;
+
+            ctx.fillStyle = '#101020';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const barWidth = canvas.width / NUM_BARS;
+            for (let i = 0; i < NUM_BARS; i++) {
+                const percent = i / NUM_BARS;
+                const freqIndex = Math.floor(Math.pow(percent, 2.5) * (freqData.length - 1));
+                const barHeight = (freqData[freqIndex] / 255) * canvas.height;
+                const hue = (i / NUM_BARS) * 240 + 120;
+                ctx.fillStyle = `hsl(${hue}, 80%, 50%)`;
+                ctx.fillRect(i * barWidth, canvas.height - barHeight, barWidth - 1, barHeight);
+            }
+            
+            const eqBarWidth = canvas.width / eqNodes.length;
+            for(let i = 0; i < eqNodes.length; i++) {
+                const gainValue = eqNodes[i].gain.value;
+                const y = (1 - (gainValue + 20) / 40) * canvas.height;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.fillRect(i * eqBarWidth, y, eqBarWidth -1, 3);
+            }
+        }
+
+        function calculateRMS() {
+            if(!timeDomainData) return;
+            let sumSquares = 0.0;
+            for (const amp of timeDomainData) {
+                const val = (amp / 128.0) - 1.0;
+                sumSquares += val * val;
+            }
+            rmsInfo.textContent = `${Math.sqrt(sumSquares / timeDomainData.length).toFixed(3)}`;
+        }
+
+        function calculateSpectralCentroid() {
+            if(!freqData) return;
+            let weightedSum = 0, magnitudeSum = 0;
+            for (let i = 0; i < freqData.length; i++) {
+                const freq = i * (audioContext.sampleRate / analyserNode.fftSize);
+                weightedSum += freq * freqData[i];
+                magnitudeSum += freqData[i];
+            }
+            if (magnitudeSum === 0) { centroidInfo.textContent = 'N/A'; return; }
+            centroidInfo.textContent = `${Math.round(weightedSum / magnitudeSum)} Hz`;
+        }
+
+        function calculateBPM() {
+            if(!audioContext || !freqData) return;
+            const currentTime = audioContext.currentTime;
+            const bassEndIndex = Math.floor(100 / (audioContext.sampleRate / analyserNode.fftSize));
+            const bassEnergy = freqData.slice(0, bassEndIndex).reduce((s, v) => s + v, 0);
+
+            if (bassEnergy > previousBassEnergy * BEAT_THRESHOLD && currentTime > lastBeatTime + BEAT_COOLDOWN) {
+                lastBeatTime = currentTime;
+                beatHistory.push(currentTime);
+                if (beatHistory.length > 20) beatHistory.shift();
+            }
+            previousBassEnergy = bassEnergy;
+
+            if (beatHistory.length > 1) {
+                const intervals = beatHistory.slice(1).map((t, i) => t - beatHistory[i]);
+                const avgInterval = intervals.reduce((s, v) => s + v, 0) / intervals.length;
+                if (avgInterval > 0) bpmInfo.textContent = `${Math.round(60 / avgInterval)}`;
+            } else {
+                bpmInfo.textContent = '偵測中...';
+            }
+        }
+    </script>
+</body>
+</html>
