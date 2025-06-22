@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Equalizer (with output function)</title>
+    <title>Web-Equalizer(with output function)</title>
     <style>
         body {
             background-color: #1a1a2e;
@@ -116,11 +116,27 @@
             gap: 1rem;
             justify-content: center;
         }
+        footer {
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid #2a2a4a;
+            font-size: 0.9rem;
+            color: #8888aa;
+        }
+        footer a {
+            color: #aaccff;
+            text-decoration: none;
+            margin: 0 0.5rem;
+            transition: color 0.2s;
+        }
+        footer a:hover {
+            color: #ffffff;
+        }
     </style>
 </head>
 <body>
     <div id="container">
-        <h1>音樂頻譜分析儀（with Equalizer）</h1>
+        <h1>音樂頻譜分析（with Equalizer））</h1>
         <canvas id="visualizerCanvas" width="1024" height="400"></canvas>
         <div id="freq-labels-panel"></div>
         <div id="progress-container">
@@ -149,6 +165,12 @@
             <button class="btn" id="play-pause-btn">播放</button>
             <input type="file" id="fileInput" accept=".wav,.mp3,.ogg">
         </div>
+        <footer>
+            <span>Author: owl_d</span> |
+            <a href="https://github.com/owl-nosleep" target="_blank">GitHub</a> |
+            <a href="https://your-portfolio-website.com" target="_blank">個人網站(整修中)</a> |
+            <a href="mailto:matt93415@gmail.com">聯絡我</a>
+        </footer>
     </div>
 
     <script>
@@ -188,7 +210,6 @@
         let beatHistory = [], lastBeatTime = 0, previousBassEnergy = 0;
         const BEAT_THRESHOLD = 1.15, BEAT_COOLDOWN = 0.2;
         
-        // **更新 EQ 風格預設值**
         const eqPresets = {
             rock: [6, 5, 4, 3, 1, -1, -2, -2, -1, 0, 1, 2, 4, 5, 6, 7, 6, 5, 4, 3],
             pop: [4, 3, 2, 0, -1, -2, -1, 0, 1, 2, 3, 4, 3, 2, 3, 4, 3, 2, 1, 0],
